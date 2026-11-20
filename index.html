@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Host Hub</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐞</text></svg>">
-
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💪</text></svg>">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Roboto:wght@400;500;700&display=swap');
 
@@ -202,6 +202,7 @@ tr:last-child td{border-bottom:none;}
     <div class="field"><label>Email</label><input id="gateEmail" type="email" placeholder="you@example.com"></div>
     <div class="field"><label>Password</label><input id="gatePassword" type="password" placeholder="Password"></div>
     <button id="gateSignInBtn" style="width:100%;margin-top:4px;">Sign in</button>
+    <p style="margin-top:12px;"><a href="#" id="gateForgot" onclick="return false;" style="color:var(--tm-red);font-size:0.78rem;">Forgot password?</a></p>
     <p id="gateError" style="color:var(--tm-red);font-size:0.78rem;margin-top:10px;"></p>
   </div>
 </div>
@@ -256,6 +257,7 @@ const ICONS = {
   updates: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6l-5 4H4a1 1 0 0 0-1 1z"/><path d="M16 8a4 4 0 0 1 0 8"/></svg>`,
   tasks: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l1.5 1.5L8 5"/><line x1="11" y1="6" x2="20" y2="6"/><path d="M4 12l1.5 1.5L8 11"/><line x1="11" y1="12" x2="20" y2="12"/><path d="M4 18l1.5 1.5L8 17"/><line x1="11" y1="18" x2="20" y2="18"/></svg>`,
   shift: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>`,
+  schedule: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="7" y1="14" x2="11" y2="14"/><line x1="7" y1="17" x2="15" y2="17"/></svg>`,
   events: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>`,
   team: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="8" r="2.5"/><path d="M15 14.2c2.9 0.4 5 2.8 5 5.8"/></svg>`,
   logbook: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2z"/></svg>`,
@@ -282,11 +284,9 @@ const NAV = [
   {id:"updates", label:"Updates"},
   {id:"tasks", label:"Daily Tasks"},
   {id:"shift", label:"Shift Summary"},
-  {id:"events", label:"Events & Dates"},
-  {id:"team", label:"Team Overview"},
+  {id:"schedule", label:"Schedule"},
   {id:"logbook", label:"Report an Issue"},
   {id:"passwords", label:"Passwords & Links"},
-  {id:"blacklist", label:"Black List"},
   {id:"activity", label:"Activity Log", adminOnly:true},
   {id:"issuetracker", label:"Issue Tracker", adminOnly:true}
 ];
@@ -303,6 +303,8 @@ const state = {
   cleaningTemplates: [],
   shiftLogs: [],
   events: [],
+  schedule: [],
+  scheduleImages: [],
   team: [],
   logbook: [],
   passwords: [],
@@ -419,9 +421,28 @@ function wireAuthGate(){
     try{
       await auth.signInWithEmailAndPassword(email, pw);
     }catch(e){
-      errEl.textContent = "Couldn't sign in — check your email and password.";
+      const msgs = {
+        'auth/invalid-credential':"Wrong email or password.",
+        'auth/wrong-password':"Wrong password.",
+        'auth/user-not-found':"No account with this email.",
+        'auth/invalid-email':"This email address doesn't look right.",
+        'auth/user-disabled':"This account has been disabled.",
+        'auth/too-many-requests':"Too many attempts. Wait a few minutes or reset your password.",
+        'auth/network-request-failed':"No connection. Check your internet and try again.",
+        'auth/operation-not-allowed':"Email/password sign-in is switched off in Firebase.",
+        'auth/invalid-api-key':"The Firebase settings in this page are wrong (API key)."
+      };
+      errEl.textContent = (msgs[e.code] || "Couldn't sign in.") + (e.code ? " ("+e.code+")" : "");
     }
   };
+  const forgot = document.getElementById('gateForgot');
+  if(forgot) forgot.addEventListener('click', async ()=>{
+    const errEl = document.getElementById('gateError');
+    const email = document.getElementById('gateEmail').value.trim();
+    if(!email){ errEl.textContent = "Type your email above first, then click 'Forgot password?'."; return; }
+    try{ await auth.sendPasswordResetEmail(email); errEl.style.color="#3ddc84"; errEl.textContent="Reset link sent. Check your email (and spam)."; }
+    catch(e){ errEl.style.color=""; errEl.textContent="Couldn't send reset email ("+(e.code||"error")+")."; }
+  });
   document.getElementById('gateSignInBtn').addEventListener('click', doSignIn);
   document.getElementById('gatePassword').addEventListener('keydown', e=>{ if(e.key==='Enter') doSignIn(); });
 }
@@ -521,6 +542,18 @@ function subscribeAll(){
     }, ()=>{});
   }catch(e){}
   try{
+    db.collection("scheduleImages").orderBy("createdAt","desc").limit(20).onSnapshot(snap=>{
+      state.scheduleImages = snap.docs.map(d=>({id:d.id,...d.data()}));
+      render();
+    }, ()=>{});
+  }catch(e){}
+  try{
+    db.collection("schedule").orderBy("date","asc").limit(500).onSnapshot(snap=>{
+      state.schedule = snap.docs.map(d=>({id:d.id,...d.data()}));
+      render();
+    }, ()=>{});
+  }catch(e){}
+  try{
     db.collection("team").onSnapshot(snap=>{
       state.team = snap.docs.map(d=>({id:d.id,...d.data()}));
       render();
@@ -613,7 +646,7 @@ function render(){
   const v = document.getElementById('view');
   const renderers = {
     focus: renderFocus, sales: renderSales, updates: renderUpdates, tasks: renderTasks,
-    shift: renderShift, events: renderEvents, team: renderTeam, logbook: renderLogbook,
+    shift: renderShift, schedule: renderSchedule, events: renderEvents, team: renderTeam, logbook: renderLogbook,
     passwords: renderPasswords, blacklist: renderBlacklist, issuetracker: renderIssueTracker, activity: renderActivity
   };
   v.innerHTML = renderers[state.tab]();
@@ -861,6 +894,16 @@ function renderFocus(){
       ${promo.until? `<div class="muted" style="white-space:nowrap;">Until ${niceDate(promo.until)}</div>`:""}
     </div>` : ``}
 
+    ${recentUpdates.length? `
+    <div class="list-item" style="border:2px solid var(--tm-red);border-left-width:8px;background:rgba(250,25,74,0.08);margin-top:18px;padding:26px 30px;">
+      <div class="row">
+        <div><span class="promo-tag" style="font-size:0.85rem;padding:5px 12px;">Last update</span></div>
+        <div class="timestamp" style="font-size:0.9rem;">${fmtTime(recentUpdates[0].timestamp)}${recentUpdates[0].author? " · "+escapeHtml(recentUpdates[0].author):""}</div>
+      </div>
+      <p style="margin-top:16px;font-size:1.5rem;line-height:1.4;font-weight:600;color:var(--tm-white,#fff);">${escapeHtml(recentUpdates[0].text)}</p>
+      <button class="ghost small" data-goto-tab="updates" style="margin-top:14px;">All updates →</button>
+    </div>` : ``}
+
     <div class="focus-pills">
       <div class="focus-pill"><span class="dot" style="background:${pillColor.signed}"></span>Signed <b>${Math.round(todayTarget(kSigned))}/day</b></div>
       <div class="focus-pill"><span class="dot" style="background:${pillColor.clubConversions}"></span>Club Conversions <b>${Math.round(todayTarget(kClub))}/day</b></div>
@@ -927,16 +970,6 @@ function renderFocus(){
     <div class="grid cols-4">
       <div class="card"><div class="sub muted">OPEN ISSUES</div><div class="num" style="font-size:1.6rem;">${openIssues}</div></div>
     </div>
-
-    <hr class="tm-divider">
-    <div class="section-title"><h2>Coming Up</h2></div>
-    ${upcoming.length? upcoming.map(e=>`
-      <div class="list-item upcoming">
-        <div class="row">
-          <div><span class="tag">${escapeHtml(e.type||"Event")}</span><b>${escapeHtml(e.title)}</b></div>
-          <div class="muted">${niceDate(e.date)}</div>
-        </div>
-      </div>`).join("") : `<div class="empty">Nothing on the calendar in the next 3 days.</div>`}
 
     ${effectiveAdmin()? `
     <div class="form-card settings-card">
@@ -1300,6 +1333,51 @@ function renderEvents(){
     <h3>Upcoming</h3>
     ${upcoming.length? upcoming.map(e=>item(e,"upcoming")).join("") : `<div class="empty">Nothing scheduled.</div>`}
     ${past.length? `<h3 style="margin-top:18px;">Past</h3>${past.slice(0,10).map(e=>item(e,"past")).join("")}` : ""}
+  `;
+}
+
+/* ---------------- SCHEDULE ---------------- */
+function renderSchedule(){
+  const admin = effectiveAdmin();
+  const today = todayStr();
+  const weekAgo = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  const SHIFT_ORDER = {"Morning":1,"Evening":2,"Full day":0};
+  const sorted = a=>a.slice().sort((x,y)=> x.date.localeCompare(y.date) || (SHIFT_ORDER[x.shift]||9)-(SHIFT_ORDER[y.shift]||9));
+  const upcoming = sorted(state.schedule.filter(s=>s.date>=today));
+  const earlier = sorted(state.schedule.filter(s=>s.date<today && s.date>=weekAgo)).reverse();
+  const groupHtml = (list)=>{
+    const days = [...new Set(list.map(s=>s.date))];
+    return days.map(d=>`
+      <div class="card" style="margin-bottom:12px;${d===today?'border:2px solid var(--tm-red);':''}">
+        <div class="row" style="margin-bottom:8px;display:flex;align-items:center;gap:12px;"><b style="font-size:1.05rem;">${niceDate(d)}</b>${d===today?'<span class="promo-tag">Today</span>':''}</div>
+        ${list.filter(s=>s.date===d).map(s=>`
+          <div class="row" style="padding:8px 0;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <div><span class="tag">${escapeHtml(s.shift||"")}</span><b>${escapeHtml(s.host||"")}</b>${s.note?` <span class="muted">— ${escapeHtml(s.note)}</span>`:""}</div>
+            ${admin? `<button class="icon-btn" data-del-schedule="${s.id}">${icon('trash')} Remove</button>` : ``}
+          </div>`).join("")}
+      </div>`).join("");
+  };
+  return `
+    <div class="section-title"><h2>Schedule</h2></div>
+    ${state.scheduleImages.length? state.scheduleImages.map(im=>`
+      <div class="card" style="margin-bottom:14px;">
+        <div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+          <b>${escapeHtml(im.name||"Schedule")}</b>
+          <span class="muted" style="font-size:0.8rem;">${fmtTime(im.createdAt)}</span>
+          ${admin? `<button class="icon-btn" data-del-sched-img="${im.id}">${icon('trash')} Remove</button>` : ``}
+        </div>
+        <img src="${im.data}" alt="${escapeHtml(im.name||'Schedule')}" data-zoom-img style="width:100%;border-radius:10px;cursor:zoom-in;display:block;">
+        <p class="muted" style="margin-top:8px;font-size:0.8rem;">Click the picture to enlarge.</p>
+      </div>`).join("") : `<div class="empty" style="margin-bottom:14px;">No schedule picture uploaded yet.</div>`}
+    ${admin? `
+    <div class="form-card">
+      <h3>Upload a schedule picture</h3>
+      <p class="muted">Upload a screenshot or photo (JPG or PNG). It is shrunk automatically.</p>
+      <div class="field"><label>Title</label><input id="schedImgName" placeholder="e.g. Week 47"></div>
+      <input type="file" id="schedImgFile" accept="image/*">
+      <p id="schedImgMsg" class="muted" style="margin-top:8px;"></p>
+    </div>
+    ` : ``}
   `;
 }
 
@@ -1811,6 +1889,54 @@ function wireTabEvents(){
     eventForm.reset();
   });
   v.querySelectorAll('[data-del-event]').forEach(b=>b.addEventListener('click',()=>safeDelete('events/'+b.dataset.delEvent)));
+
+  // SCHEDULE IMAGES
+  const schedFile = v.querySelector('#schedImgFile');
+  if(schedFile) schedFile.addEventListener('change', async ()=>{
+    const f = schedFile.files[0];
+    const msg = v.querySelector('#schedImgMsg');
+    if(!f) return;
+    msg.textContent = "Shrinking and saving…";
+    try{
+      let bmp;
+      try{ bmp = await createImageBitmap(f); }
+      catch(_){
+        const url = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error("file read failed")); r.readAsDataURL(f); });
+        bmp = await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error("browser could not open this image")); i.src=url; });
+      }
+      let data = "";
+      for(const [maxW,q] of [[1800,0.85],[1600,0.75],[1400,0.65],[1200,0.55],[1000,0.5]]){
+        const sc = Math.min(1, maxW/bmp.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(bmp.width*sc); c.height = Math.round(bmp.height*sc);
+        const ctx = c.getContext('2d'); ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(bmp,0,0,c.width,c.height);
+        data = c.toDataURL('image/jpeg', q);
+        if(data.length < 900000) break;
+      }
+      if(data.length >= 950000){ msg.textContent = "This picture is too big or detailed. Try a smaller screenshot."; return; }
+      const name = (v.querySelector('#schedImgName').value||"").trim() || f.name.replace(/\.[^.]+$/,"");
+      const ok = await safeAdd('scheduleImages', {name, data, createdAt: Date.now()});
+      msg.textContent = ok ? "Uploaded." : "";
+    }catch(e){ msg.textContent = "Couldn't upload that picture: " + ((e && e.message) || e) + " (type: " + (f.type||"unknown") + ", " + Math.round(f.size/1024) + " KB)"; }
+  });
+  v.querySelectorAll('[data-del-sched-img]').forEach(b=>b.addEventListener('click',()=>safeDelete('scheduleImages/'+b.dataset.delSchedImg)));
+  v.querySelectorAll('[data-zoom-img]').forEach(img=>img.addEventListener('click',()=>{
+    const o = document.createElement('div');
+    o.style.cssText = "position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;overflow:auto;";
+    o.innerHTML = '<img src="'+img.src+'" style="max-width:100%;max-height:100%;border-radius:8px;">';
+    o.addEventListener('click',()=>o.remove());
+    document.body.appendChild(o);
+  }));
+
+  // SCHEDULE
+  const scheduleForm = v.querySelector('#scheduleForm');
+  if(scheduleForm) scheduleForm.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const fd = new FormData(scheduleForm);
+    await safeAdd('schedule', {date:fd.get('date'), shift:fd.get('shift'), host:(fd.get('host')||"").trim(), note:fd.get('note')||""});
+    scheduleForm.reset();
+  });
+  v.querySelectorAll('[data-del-schedule]').forEach(b=>b.addEventListener('click',()=>safeDelete('schedule/'+b.dataset.delSchedule)));
 
   // TEAM
   const teamForm = v.querySelector('#teamForm');
