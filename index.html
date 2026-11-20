@@ -1359,6 +1359,67 @@ async function sopLoadBlob(sop){
   for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
   return new Blob([bytes], {type: sop.type || "application/octet-stream"});
 }
+const sopViewCache = {};
+const sopViewPromises = {};
+let pdfjsPromise = null;
+function loadPdfJs(){
+  if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if(pdfjsPromise) return pdfjsPromise;
+  pdfjsPromise = new Promise((res,rej)=>{
+    const sc = document.createElement('script');
+    sc.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    sc.onload = ()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; res(window.pdfjsLib); };
+    sc.onerror = ()=>{ pdfjsPromise=null; rej(new Error("PDF viewer could not be loaded")); };
+    document.head.appendChild(sc);
+  });
+  return pdfjsPromise;
+}
+function openLightbox(src){
+  const o = document.createElement('div');
+  o.style.cssText = "position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:zoom-out;overflow:auto;";
+  o.innerHTML = '<img src="'+src+'" style="max-width:100%;border-radius:8px;">';
+  o.addEventListener('click',()=>o.remove());
+  document.body.appendChild(o);
+}
+async function sopBuildPages(sop){
+  const blob = await sopLoadBlob(sop);
+  if((sop.type||"").startsWith("image/")) return [URL.createObjectURL(blob)];
+  const lib = await loadPdfJs();
+  const doc = await lib.getDocument({data: new Uint8Array(await blob.arrayBuffer())}).promise;
+  const urls = [];
+  for(let p=1; p<=doc.numPages; p++){
+    const page = await doc.getPage(p);
+    const v1 = page.getViewport({scale:1});
+    const scale = Math.min(3, 1500 / v1.width);
+    const vp = page.getViewport({scale});
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const ctx = c.getContext('2d'); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,c.width,c.height);
+    await page.render({canvasContext: ctx, viewport: vp}).promise;
+    urls.push(c.toDataURL('image/jpeg', 0.92));
+  }
+  return urls;
+}
+async function sopFillView(el){
+  const id = el.dataset.sopView;
+  const sop = state.sops.find(x=>x.id===id); if(!sop) return;
+  const show = urls=>{
+    const target = document.querySelector('[data-sop-view="'+id+'"]'); if(!target) return;
+    target.className = "";
+    target.innerHTML = urls.map(u=>'<img src="'+u+'" style="width:100%;display:block;border-radius:8px;margin-bottom:10px;cursor:zoom-in;">').join("");
+    target.querySelectorAll('img').forEach(im=>im.addEventListener('click',()=>openLightbox(im.src)));
+  };
+  if(sopViewCache[id]){ show(sopViewCache[id]); return; }
+  if(!sopViewPromises[id]) sopViewPromises[id] = sopBuildPages(sop);
+  try{
+    const urls = await sopViewPromises[id];
+    sopViewCache[id] = urls; show(urls);
+  }catch(e){
+    delete sopViewPromises[id];
+    const target = document.querySelector('[data-sop-view="'+id+'"]');
+    if(target) target.textContent = "Couldn't show this SOP here ("+((e && e.message)||"error")+"). Use Download instead.";
+  }
+}
 async function sopUpload(file, title, setMsg){
   let blob = file, type = file.type, name = file.name;
   if(type === "application/pdf" || /\.pdf$/i.test(name)){ type = "application/pdf"; }
@@ -1404,7 +1465,7 @@ function renderSops(){
   const icoFor = s => (s.type||"").startsWith("image/") ? "Picture" : "PDF";
   return `
     <div class="section-title"><h2>SOPs</h2></div>
-    <p class="muted">Procedures and instructions. Click Open to read one.</p>
+    <p class="muted">Procedures and instructions. Click a page to enlarge it.</p>
     ${admin? `
     <div class="form-card">
       <h3>Upload an SOP</h3>
@@ -1414,16 +1475,16 @@ function renderSops(){
       <p id="sopMsg" class="muted" style="margin-top:8px;"></p>
     </div>` : ``}
     ${state.sops.length? state.sops.map(s=>`
-      <div class="list-item">
-        <div class="row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div><span class="tag">${icoFor(s)}</span><b>${escapeHtml(s.title||s.name||"SOP")}</b>
+      <div class="card" style="margin-bottom:18px;">
+        <div class="row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+          <div><span class="tag">${icoFor(s)}</span><b style="font-size:1.1rem;">${escapeHtml(s.title||s.name||"SOP")}</b>
             <div class="muted" style="font-size:0.8rem;margin-top:4px;">${escapeHtml(s.name||"")} · ${fmtSize(s.size||0)} · ${fmtTime(s.createdAt)}</div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="ghost small" data-open-sop="${s.id}">Open</button>
             <button class="ghost small" data-dl-sop="${s.id}">Download</button>
             ${admin? `<button class="icon-btn" data-del-sop="${s.id}">${icon('trash')} ${state.uiSopConfirm===s.id? "Click again to remove" : "Remove"}</button>` : ``}
           </div>
         </div>
+        <div data-sop-view="${s.id}" class="muted">Loading…</div>
       </div>`).join("") : `<div class="empty">No SOPs uploaded yet.</div>`}
   `;
 }
@@ -1994,26 +2055,13 @@ function wireTabEvents(){
   });
   const showSop = async (id, mode)=>{
     const sop = state.sops.find(x=>x.id===id); if(!sop) return;
-    const isPdf = sop.type==="application/pdf";
-    let tab = null;
-    if(mode==='open' && isPdf) tab = window.open('', '_blank');
     try{
       const blob = await sopLoadBlob(sop);
       const url = URL.createObjectURL(blob);
-      if(mode==='download'){
-        const a = document.createElement('a'); a.href=url; a.download=sop.name||"sop"; document.body.appendChild(a); a.click(); a.remove();
-      } else if(isPdf){
-        if(tab) tab.location = url; else { const a=document.createElement('a'); a.href=url; a.download=sop.name||"sop.pdf"; document.body.appendChild(a); a.click(); a.remove(); }
-      } else {
-        const o = document.createElement('div');
-        o.style.cssText = "position:fixed;top:0;right:0;bottom:0;left:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;overflow:auto;";
-        o.innerHTML = '<img src="'+url+'" style="max-width:100%;max-height:100%;border-radius:8px;">';
-        o.addEventListener('click',()=>o.remove());
-        document.body.appendChild(o);
-      }
-    }catch(e){ if(tab) tab.close(); showToast("Couldn't open this SOP — "+((e && e.message)||"try again"), true); }
+      const a = document.createElement('a'); a.href=url; a.download=sop.name||"sop"; document.body.appendChild(a); a.click(); a.remove();
+    }catch(e){ showToast("Couldn't download this SOP — "+((e && e.message)||"try again"), true); }
   };
-  v.querySelectorAll('[data-open-sop]').forEach(b=>b.addEventListener('click',()=>showSop(b.dataset.openSop,'open')));
+  v.querySelectorAll('[data-sop-view]').forEach(el=>sopFillView(el));
   v.querySelectorAll('[data-dl-sop]').forEach(b=>b.addEventListener('click',()=>showSop(b.dataset.dlSop,'download')));
   v.querySelectorAll('[data-del-sop]').forEach(b=>b.addEventListener('click', async ()=>{
     const id = b.dataset.delSop;
