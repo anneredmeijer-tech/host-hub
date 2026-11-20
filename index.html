@@ -1474,10 +1474,10 @@ function renderSops(){
       <input type="file" id="sopFile" accept=".pdf,application/pdf,image/png,image/jpeg">
       <p id="sopMsg" class="muted" style="margin-top:8px;"></p>
     </div>` : ``}
-    ${state.sops.length? state.sops.map(s=>`
-      <div class="card" style="margin-bottom:18px;">
+    ${state.sops.length? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;align-items:start;">` + state.sops.map(s=>`
+      <div class="card" style="margin:0;padding:12px;">
         <div class="row" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-          <div><span class="tag">${icoFor(s)}</span><b style="font-size:1.1rem;">${escapeHtml(s.title||s.name||"SOP")}</b>
+          <div><span class="tag">${icoFor(s)}</span><b style="font-size:0.95rem;">${escapeHtml(s.title||s.name||"SOP")}</b>
             <div class="muted" style="font-size:0.8rem;margin-top:4px;">${escapeHtml(s.name||"")} · ${fmtSize(s.size||0)} · ${fmtTime(s.createdAt)}</div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="ghost small" data-dl-sop="${s.id}">Download</button>
@@ -1485,7 +1485,7 @@ function renderSops(){
           </div>
         </div>
         <div data-sop-view="${s.id}" class="muted">Loading…</div>
-      </div>`).join("") : `<div class="empty">No SOPs uploaded yet.</div>`}
+      </div>`).join("") + `</div>` : `<div class="empty">No SOPs uploaded yet.</div>`}
   `;
 }
 
